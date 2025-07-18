@@ -53,6 +53,18 @@ export async function POST(req) {
       })
     }
 
+    // Check for required services
+    if (!firecrawl || !openai || !process.env.SERPER_API_KEY || !supabase) {
+      console.error('Missing required services - check environment variables')
+      return new Response(JSON.stringify({ 
+        error: 'Service configuration error',
+        details: 'One or more required services are not configured. Please check the server logs.'
+      }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Validate URL format
     try {
       new URL(url)
@@ -118,9 +130,14 @@ export async function POST(req) {
         .update({ status: 'failed', analysis_summary: { error: 'Failed to crawl website' } })
         .eq('id', initialContext.id)
       
+      // More user-friendly error message in production
+      const errorMessage = process.env.NODE_ENV === 'production' 
+        ? 'Unable to analyze this website. Please try a different URL or try again later.'
+        : error.message
+      
       return new Response(JSON.stringify({ 
         error: 'Failed to crawl website',
-        details: error.message 
+        details: errorMessage 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },

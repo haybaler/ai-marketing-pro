@@ -4,7 +4,9 @@ const API_BASE = '/api'
 export const apiClient = {
   // Enhanced AI Context Analysis
   async analyzeContext({ url, userId }) {
-    const response = await fetch(`${API_BASE}/ai/analyze-context`, {
+    const endpoint = `${API_BASE}/ai/analyze-context`
+    
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

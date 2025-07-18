@@ -6,6 +6,15 @@
   "functions": {
     "app/api/ai/marketing-content/route.js": {
       "maxDuration": 30
+    },
+    "app/api/ai/analyze-context/route.js": {
+      "maxDuration": 60
+    },
+    "app/api/ai/chat-with-context/route.js": {
+      "maxDuration": 30
     }
+  },
+  "env": {
+    "NODE_ENV": "production"
   }
 } 

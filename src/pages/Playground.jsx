@@ -79,8 +79,21 @@ export default function Playground() {
       
     } catch (error) {
       setAnalysisStage('failed');
-      setAnalysisError(error.message);
+      
+      // Parse error details if available
+      let errorMessage = error.message;
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.details) {
+          errorMessage = errorData.details;
+        }
+      } catch {
+        // Use original error message if not JSON
+      }
+      
+      setAnalysisError(errorMessage);
       setProgress(0);
+      console.error('URL analysis error:', error);
     }
   };
 

@@ -90,9 +90,15 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('Chat with context error:', error)
+    
+    // More user-friendly error message in production
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Unable to generate response. Please try again.'
+      : error.message
+    
     return new Response(JSON.stringify({ 
       error: 'Failed to generate response',
-      details: error.message 
+      details: errorMessage 
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
