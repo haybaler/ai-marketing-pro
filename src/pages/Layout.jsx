@@ -74,7 +74,7 @@ export default function Layout({ children }) {
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <Link href="/" className="group">
-              <img src="/uploads/logo-dark.svg" alt="High-Growth Digital Logo" className="h-7 transition-transform duration-200 group-hover:scale-105" />
+              <img src="/uploads/logo-white.png" alt="High-Growth Digital Logo" className="h-7 transition-transform duration-200 group-hover:scale-105" />
             </Link>
 
             {/* Desktop Navigation */}
@@ -153,7 +153,7 @@ export default function Layout({ children }) {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="md:col-span-2">
               <Link href="/" className="inline-block mb-4">
-                <img src="/uploads/logo-dark.svg" alt="High-Growth Digital Logo" className="h-8" />
+                <img src="/uploads/logo-white.png" alt="High-Growth Digital Logo" className="h-8" />
               </Link>
               <p className="text-[var(--text-secondary)] mb-4 max-w-md text-sm leading-relaxed">
                 Your technical co-pilot for go-to-market strategy, outbound automation, and tech stack integration. 
