@@ -4,11 +4,7 @@ const API_BASE = '/api'
 export const apiClient = {
   // Enhanced AI Context Analysis
   async analyzeContext({ url, userId }) {
-    // Use development endpoint if in dev mode
-    const isDev = process.env.NEXT_PUBLIC_DEV_MODE === 'true'
-    const endpoint = isDev 
-      ? `${API_BASE}/ai/analyze-context-dev` 
-      : `${API_BASE}/ai/analyze-context`
+    const endpoint = `${API_BASE}/ai/analyze-context`
     
     const response = await fetch(endpoint, {
       method: 'POST',

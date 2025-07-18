@@ -54,26 +54,11 @@ export async function POST(req) {
     }
 
     // Check for required services
-    const missingServices = []
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      missingServices.push('Supabase')
-    }
-    if (!firecrawl) {
-      missingServices.push('Firecrawl (FIRECRAWL_API_KEY)')
-    }
-    if (!openai) {
-      missingServices.push('OpenAI (OPENAI_API_KEY)')
-    }
-    if (!process.env.SERPER_API_KEY) {
-      missingServices.push('Serper (SERPER_API_KEY)')
-    }
-
-    if (missingServices.length > 0) {
-      console.error('Missing required services:', missingServices)
+    if (!firecrawl || !openai || !process.env.SERPER_API_KEY || !supabase) {
+      console.error('Missing required services - check environment variables')
       return new Response(JSON.stringify({ 
         error: 'Service configuration error',
-        details: `Missing API keys for: ${missingServices.join(', ')}. Please check your environment variables.`,
-        missingServices
+        details: 'One or more required services are not configured. Please check the server logs.'
       }), {
         status: 503,
         headers: { 'Content-Type': 'application/json' },
@@ -145,9 +130,14 @@ export async function POST(req) {
         .update({ status: 'failed', analysis_summary: { error: 'Failed to crawl website' } })
         .eq('id', initialContext.id)
       
+      // More user-friendly error message in production
+      const errorMessage = process.env.NODE_ENV === 'production' 
+        ? 'Unable to analyze this website. Please try a different URL or try again later.'
+        : error.message
+      
       return new Response(JSON.stringify({ 
         error: 'Failed to crawl website',
-        details: error.message 
+        details: errorMessage 
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
