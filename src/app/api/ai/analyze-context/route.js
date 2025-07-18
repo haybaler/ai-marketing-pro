@@ -53,6 +53,33 @@ export async function POST(req) {
       })
     }
 
+    // Check for required services
+    const missingServices = []
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      missingServices.push('Supabase')
+    }
+    if (!firecrawl) {
+      missingServices.push('Firecrawl (FIRECRAWL_API_KEY)')
+    }
+    if (!openai) {
+      missingServices.push('OpenAI (OPENAI_API_KEY)')
+    }
+    if (!process.env.SERPER_API_KEY) {
+      missingServices.push('Serper (SERPER_API_KEY)')
+    }
+
+    if (missingServices.length > 0) {
+      console.error('Missing required services:', missingServices)
+      return new Response(JSON.stringify({ 
+        error: 'Service configuration error',
+        details: `Missing API keys for: ${missingServices.join(', ')}. Please check your environment variables.`,
+        missingServices
+      }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Validate URL format
     try {
       new URL(url)
