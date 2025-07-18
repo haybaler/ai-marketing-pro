@@ -2,11 +2,11 @@
   "/_app": "pages/_app.js",
   "/CaseStudies": "pages/CaseStudies.html",
   "/_error": "pages/_error.js",
-  "/CaseStudyDetail": "pages/CaseStudyDetail.html",
   "/Contact": "pages/Contact.html",
-  "/Playground": "pages/Playground.html",
-  "/Layout": "pages/Layout.html",
+  "/CaseStudyDetail": "pages/CaseStudyDetail.html",
   "/Home": "pages/Home.html",
+  "/Layout": "pages/Layout.html",
+  "/Playground": "pages/Playground.html",
   "/_document": "pages/_document.js",
   "/404": "pages/404.html"
 }

@@ -1,11 +1,13 @@
 {
+  "/_not-found/page": "/_not-found",
+  "/api/ai/chat-with-context/route": "/api/ai/chat-with-context",
+  "/api/ai/marketing-content/route": "/api/ai/marketing-content",
+  "/api/ai/analyze-context/route": "/api/ai/analyze-context",
   "/api/case-studies/route": "/api/case-studies",
   "/api/consultation-requests/route": "/api/consultation-requests",
-  "/_not-found/page": "/_not-found",
-  "/api/ai/marketing-content/route": "/api/ai/marketing-content",
   "/case-studies/[id]/page": "/case-studies/[id]",
-  "/page": "/",
   "/case-studies/page": "/case-studies",
+  "/page": "/",
   "/playground/page": "/playground",
   "/contact/page": "/contact"
 }

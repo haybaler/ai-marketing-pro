@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { FirecrawlApp } from '@mendable/firecrawl-js'
+import FirecrawlApp from '@mendable/firecrawl-js'
 import OpenAI from 'openai'
 
 // Initialize services
@@ -8,13 +8,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-const firecrawl = new FirecrawlApp({
+const firecrawl = process.env.FIRECRAWL_API_KEY ? new FirecrawlApp({
   apiKey: process.env.FIRECRAWL_API_KEY
-})
+}) : null
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-})
+}) : null
 
 // Serper API integration (manual implementation)
 async function searchWithSerper(query) {
