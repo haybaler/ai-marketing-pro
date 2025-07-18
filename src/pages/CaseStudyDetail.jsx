@@ -243,7 +243,7 @@ export default function CaseStudyDetail({ id }) {
           <p className="text-xl text-[var(--text-light)] mb-8 max-w-2xl mx-auto">
             Let's discuss how we can help you achieve similar results with AI-powered marketing strategies.
           </p>
-          <Link to={createPageUrl("Contact")}>
+          <Link href="/contact">
             <Button size="lg" className="bg-[var(--primary-navy)] hover:bg-[var(--primary-navy)]/90 text-white px-8 py-4 rounded-full text-lg font-semibold hover-lift">
               Start Your Project
               <ExternalLink className="w-5 h-5 ml-2" />

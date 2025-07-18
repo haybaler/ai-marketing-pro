@@ -68,7 +68,7 @@ export async function POST(req) {
   }
 }
 
-export async function GET(req) {
+export async function GET() {
   try {
     const { data, error } = await supabase
       .from('consultation_requests')
