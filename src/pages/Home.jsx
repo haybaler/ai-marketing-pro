@@ -1,7 +1,6 @@
 
 "use client"
 
-import React from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -9,18 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
   Brain, 
-  TrendingUp, 
   Target, 
   Zap, 
   ArrowRight, 
   CheckCircle, 
   Users, 
-  Award, 
   Sparkles,
   Layers,
   Clock,
   DollarSign,
-  BarChart3,
   Wand2
 } from "lucide-react";
 

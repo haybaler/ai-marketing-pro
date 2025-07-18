@@ -1,0 +1,11 @@
+{
+  "/api/case-studies/route": "/api/case-studies",
+  "/api/consultation-requests/route": "/api/consultation-requests",
+  "/_not-found/page": "/_not-found",
+  "/api/ai/marketing-content/route": "/api/ai/marketing-content",
+  "/case-studies/[id]/page": "/case-studies/[id]",
+  "/page": "/",
+  "/case-studies/page": "/case-studies",
+  "/playground/page": "/playground",
+  "/contact/page": "/contact"
+}
