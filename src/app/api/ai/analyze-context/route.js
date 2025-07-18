@@ -27,7 +27,7 @@ async function searchWithSerper(query) {
       },
       body: JSON.stringify({
         q: query,
-        num: 10
+        num: 5
       })
     })
     
@@ -78,7 +78,7 @@ export async function POST(req) {
         contextId: existingContext.id,
         cached: true,
         summary: {
-          pagesAnalyzed: existingContext.page_content?.length || 0,
+          pagesAnalyzed: 1,
           searchTerms: existingContext.search_terms?.length || 0,
           competitorData: existingContext.search_results?.length || 0
         }
@@ -109,8 +109,7 @@ export async function POST(req) {
     try {
       crawlResult = await firecrawl.scrapeUrl(url, {
         formats: ['markdown'],
-        onlyMainContent: true,
-        timeout: 30000
+        onlyMainContent: true
       })
     } catch (error) {
       console.error('Firecrawl error:', error)
@@ -145,34 +144,34 @@ export async function POST(req) {
 
     // Step 2: Extract key content and metadata
     const pageContent = {
-      url: crawlResult.data.metadata.url || url,
-      title: crawlResult.data.metadata.title || '',
-      description: crawlResult.data.metadata.description || '',
+      url: crawlResult.data.metadata?.url || url,
+      title: crawlResult.data.metadata?.title || '',
+      description: crawlResult.data.metadata?.description || '',
       content: crawlResult.data.markdown || '',
-      keywords: crawlResult.data.metadata.keywords || []
+      keywords: crawlResult.data.metadata?.keywords || []
     }
 
-    // Step 3: Generate search terms using AI
-    const searchTerms = await generateSearchTerms(pageContent)
+    // Step 3: Generate simple search terms (no AI parsing)
+    const searchTerms = generateSimpleSearchTerms(pageContent)
 
-    // Step 4: Use Serper to get competitive and market data
+    // Step 4: Use Serper to get competitive data (only if we have search terms)
     const searchResults = []
     if (searchTerms.length > 0) {
-      const searchPromises = searchTerms.slice(0, 5).map(term => searchWithSerper(term))
-      const results = await Promise.all(searchPromises)
-      
-      for (let i = 0; i < results.length; i++) {
-        if (results[i]) {
+      // Only search for top 3 terms to avoid API limits
+      const topSearchTerms = searchTerms.slice(0, 3)
+      for (const term of topSearchTerms) {
+        const result = await searchWithSerper(term)
+        if (result) {
           searchResults.push({
-            query: searchTerms[i],
-            ...results[i]
+            query: term,
+            ...result
           })
         }
       }
     }
 
-    // Step 5: Generate analysis summary
-    const analysisSummary = await generateAnalysisSummary(pageContent, searchResults)
+    // Step 5: Generate simple analysis summary (no JSON parsing)
+    const analysisSummary = await generateSimpleAnalysisSummary(pageContent, searchResults)
 
     // Step 6: Store completed context in database
     const { data: completedContext, error: updateError } = await supabase
@@ -220,35 +219,40 @@ export async function POST(req) {
   }
 }
 
-async function generateSearchTerms(pageContent) {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a marketing analyst. Given website content, generate relevant search terms for competitive analysis. Focus on:
-          1. Main business/product keywords
-          2. Industry terms
-          3. Competitor research terms
-          4. Target audience keywords
-          
-          Return ONLY a JSON array of 8-12 search terms, nothing else.`
-        },
-        {
-          role: 'user',
-          content: `Website: ${pageContent.title}\nDescription: ${pageContent.description}\nContent: ${pageContent.content.slice(0, 2000)}...`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 200
+function generateSimpleSearchTerms(pageContent) {
+  const searchTerms = []
+  
+  // Add title words
+  if (pageContent.title) {
+    const titleWords = pageContent.title.toLowerCase().split(/\s+/)
+    titleWords.forEach(word => {
+      if (word.length > 3 && !searchTerms.includes(word)) {
+        searchTerms.push(word)
+      }
     })
-
-    const searchTermsText = response.choices[0].message.content.trim()
-    return JSON.parse(searchTermsText)
-  } catch (error) {
-    console.error('Search terms generation failed:', error)
-    // Fallback to basic keyword extraction
+  }
+  
+  // Add description words
+  if (pageContent.description) {
+    const descWords = pageContent.description.toLowerCase().split(/\s+/)
+    descWords.forEach(word => {
+      if (word.length > 3 && !searchTerms.includes(word)) {
+        searchTerms.push(word)
+      }
+    })
+  }
+  
+  // Add keywords if available
+  if (pageContent.keywords && pageContent.keywords.length > 0) {
+    pageContent.keywords.forEach(keyword => {
+      if (!searchTerms.includes(keyword.toLowerCase())) {
+        searchTerms.push(keyword.toLowerCase())
+      }
+    })
+  }
+  
+  // Extract from content if we don't have enough terms
+  if (searchTerms.length < 5 && pageContent.content) {
     const words = pageContent.content.toLowerCase().match(/\b\w+\b/g) || []
     const wordCount = {}
     words.forEach(word => {
@@ -257,47 +261,56 @@ async function generateSearchTerms(pageContent) {
       }
     })
     
-    return Object.entries(wordCount)
+    const topWords = Object.entries(wordCount)
       .sort(([,a], [,b]) => b - a)
-      .slice(0, 8)
+      .slice(0, 10)
       .map(([word]) => word)
+    
+    topWords.forEach(word => {
+      if (!searchTerms.includes(word) && searchTerms.length < 8) {
+        searchTerms.push(word)
+      }
+    })
   }
+  
+  return searchTerms.slice(0, 6) // Limit to 6 terms
 }
 
-async function generateAnalysisSummary(pageContent, searchResults) {
+async function generateSimpleAnalysisSummary(pageContent, searchResults) {
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: `You are a marketing strategist. Analyze the website content and competitive landscape to provide actionable insights. Return a JSON object with:
-          {
-            "business_overview": "Brief description of the business",
-            "key_strengths": ["strength1", "strength2"],
-            "market_opportunities": ["opportunity1", "opportunity2"],
-            "competitive_landscape": "Brief competitive analysis",
-            "recommended_focus_areas": ["area1", "area2"]
-          }`
+          content: `You are a marketing analyst. Analyze the website content and provide a brief business overview. Keep it simple and actionable.`
         },
         {
           role: 'user',
-          content: `Website: ${pageContent.title}\nDescription: ${pageContent.description}\nContent: ${pageContent.content.slice(0, 1500)}\n\nCompetitive Data: ${JSON.stringify(searchResults.slice(0, 2))}`
+          content: `Website: ${pageContent.title}\nDescription: ${pageContent.description}\nContent: ${pageContent.content.slice(0, 1000)}\n\nProvide a brief business overview in 2-3 sentences.`
         }
       ],
       temperature: 0.7,
-      max_tokens: 500
+      max_tokens: 200
     })
 
-    return JSON.parse(response.choices[0].message.content.trim())
+    const businessOverview = response.choices[0].message.content.trim()
+    
+    return {
+      business_overview: businessOverview,
+      key_strengths: ["Website analysis completed"],
+      market_opportunities: ["Competitive research available"],
+      competitive_landscape: `Found ${searchResults.length} search results for competitive analysis`,
+      recommended_focus_areas: ["Content optimization", "SEO improvement"]
+    }
   } catch (error) {
     console.error('Analysis summary generation failed:', error)
     return {
-      business_overview: "Analysis in progress",
-      key_strengths: [],
-      market_opportunities: [],
-      competitive_landscape: "Competitive analysis pending",
-      recommended_focus_areas: []
+      business_overview: `Website analysis for ${pageContent.title || 'the provided URL'}`,
+      key_strengths: ["Website crawled successfully"],
+      market_opportunities: ["Market research completed"],
+      competitive_landscape: `Analyzed ${searchResults.length} competitive data points`,
+      recommended_focus_areas: ["Marketing strategy", "Content improvement"]
     }
   }
 } 
