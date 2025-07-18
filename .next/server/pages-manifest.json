@@ -1,0 +1,11 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/CaseStudies": "pages/CaseStudies.js",
+  "/CaseStudyDetail": "pages/CaseStudyDetail.js",
+  "/Home": "pages/Home.js",
+  "/Layout": "pages/Layout.js",
+  "/Contact": "pages/Contact.js",
+  "/Playground": "pages/Playground.js",
+  "/_document": "pages/_document.js"
+}
