@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Send, Menu, X, MessageSquare, Plus, Trash2, Bot, User } from 'lucide-react';
@@ -15,7 +15,7 @@ import {
 import { apiClient } from '@/api/client';
 import { format } from 'date-fns';
 
-export default function ChatPage() {
+function ChatPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [input, setInput] = useState('');
@@ -400,5 +400,13 @@ What specific marketing challenge would you like to discuss?`
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div>Loading chat...</div>}>
+      <ChatPageContent />
+    </Suspense>
   );
 } 
