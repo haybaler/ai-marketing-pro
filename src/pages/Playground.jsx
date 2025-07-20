@@ -4,12 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { apiClient } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { 
   Bot, 
   Send,
   User,
-  Sparkles,
   Copy,
   RotateCcw,
   MessageCircle
@@ -105,7 +103,7 @@ export default function Playground() {
         throw new Error(result.error || 'Analysis failed');
       }
       
-    } catch (error) {
+    } catch (_error) {
       setMessages(prev => prev.filter(msg => msg.id !== analyzingMessage.id));
       addMessage('ai', `❌ **Analysis Failed**\n\nI couldn't analyze that website. This could be due to:\n• Website blocks crawlers\n• Invalid URL format\n• Temporary service issues\n\nPlease try a different URL or try again later.`);
       setStage('url');
@@ -160,7 +158,7 @@ export default function Playground() {
         }));
       }
       
-    } catch (error) {
+    } catch (_error) {
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id));
       addMessage('ai', `❌ **Error generating insights**\n\nSorry, I couldn't process your question right now. Please try again or ask a different question.`);
     } finally {
@@ -199,7 +197,7 @@ export default function Playground() {
     createAndNavigateToConversation(email);
   };
 
-  const createAndNavigateToConversation = (email) => {
+  const createAndNavigateToConversation = (_email) => {
     if (!lastAnalysisData) return;
     
     // Create conversation with analysis data
@@ -217,7 +215,7 @@ export default function Playground() {
   const copyToClipboard = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (err) {
+    } catch (_err) {
       console.error('Failed to copy text');
     }
   };

@@ -140,14 +140,16 @@ What specific marketing challenge would you like to discuss?`
     } catch (error) {
       console.error('Failed to send message:', error);
       
-      // Add error message
-      const errorMessage = {
-        type: 'ai',
-        content: 'Sorry, I encountered an error processing your message. Please try again.',
-      };
-      
-      const errorConv = addMessageToConversation(conversationId, errorMessage);
-      setCurrentConversation(errorConv);
+      // Add error message if we have a conversation
+      if (conversationId) {
+        const errorMessage = {
+          type: 'ai',
+          content: 'Sorry, I encountered an error processing your message. Please try again.',
+        };
+        
+        const errorConv = addMessageToConversation(conversationId, errorMessage);
+        setCurrentConversation(errorConv);
+      }
     } finally {
       setIsLoading(false);
     }
