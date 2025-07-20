@@ -106,16 +106,6 @@ export default function Home() {
                   <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </Link>
-              <Link href="/playground">
-                <Button 
-                  size="lg"
-                  variant="outline"
-                  className="px-8 py-4 rounded-xl text-base font-semibold hover-lift group shadow-sm border-gray-300"
-                >
-                  Try the AI Playground
-                  <Wand2 className="w-5 h-5 ml-2 group-hover:rotate-12 transition-transform" />
-                </Button>
-              </Link>
             </div>
 
             {/* Pricing Preview */}

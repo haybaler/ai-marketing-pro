@@ -37,10 +37,10 @@ Ensure all these variables are set in your Vercel project settings:
 
 ## Verify Deployment
 
-After deployment, test the URL analysis feature:
+After deployment, test the chat functionality:
 1. Go to your deployed app
-2. Navigate to the Playground page
-3. Try analyzing a URL like `https://example.com`
+2. Start a new conversation
+3. Ask a marketing-related question
 4. Check the Vercel function logs if there are issues
 
 ## Troubleshooting in Production

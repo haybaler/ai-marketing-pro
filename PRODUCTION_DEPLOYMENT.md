@@ -36,16 +36,12 @@ git push origin main
 
 ### 3. Post-Deployment Testing
 
-#### Test URL Analysis
-1. Navigate to `/playground` on your deployed site
-2. Enter a test URL (e.g., `https://example.com`)
-3. Click "Analyze URL"
-4. Verify the analysis completes successfully
-
 #### Test AI Chat
-1. After URL analysis, ask a question about the analyzed site
-2. Try different AI models (OpenAI, Anthropic, etc.)
-3. Verify responses are generated correctly
+1. Start a new conversation
+2. Ask a marketing-related question
+3. Try different AI models (OpenAI, Anthropic, etc.)
+4. Verify responses are generated correctly
+5. Test conversation history and context
 
 ## Monitoring & Debugging
 
