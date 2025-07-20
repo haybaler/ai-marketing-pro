@@ -11,8 +11,11 @@ import {
   User,
   Sparkles,
   Copy,
-  RotateCcw
+  RotateCcw,
+  MessageCircle
 } from "lucide-react";
+import { EmailDialog } from "@/components/ui/email-dialog";
+import { createMarketingConversation, setUserEmail, getUserEmail } from "@/lib/conversations";
 
 export default function Playground() {
   const [messages, setMessages] = useState([
@@ -28,6 +31,8 @@ export default function Playground() {
   const [isLoading, setIsLoading] = useState(false);
   const [contextId, setContextId] = useState(null);
   const [stage, setStage] = useState('url'); // url, analyzing, analyzed, questions
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [lastAnalysisData, setLastAnalysisData] = useState(null);
   const messagesEndRef = useRef(null);
   const userId = "demo-user-123";
 
@@ -84,7 +89,16 @@ export default function Playground() {
         // Remove loading message and add results
         setMessages(prev => prev.filter(msg => msg.id !== analyzingMessage.id));
         
-        addMessage('ai', `✅ **Website Analysis Complete!**\n\n📈 **Quick Summary:**\n• ${result.summary.pagesAnalyzed} pages analyzed\n• ${result.summary.searchTerms} search terms identified\n• ${result.summary.competitorData} competitors researched\n\n🎯 **Ready for Marketing Strategy!**\n\nNow I can help you with specific marketing questions. Try asking:\n\n• "What are the top 3 marketing opportunities?"\n• "Who is the target audience and how to reach them?"\n• "What are competitors doing differently?"\n• "How to improve conversion rates?"\n• "What content strategy would work best?"\n\nWhat would you like to know?`);
+        const analysisMessage = `✅ **Website Analysis Complete!**\n\n📈 **Quick Summary:**\n• ${result.summary.pagesAnalyzed} pages analyzed\n• ${result.summary.searchTerms} search terms identified\n• ${result.summary.competitorData} competitors researched\n\n🎯 **Ready for Marketing Strategy!**\n\nNow I can help you with specific marketing questions. Try asking:\n\n• "What are the top 3 marketing opportunities?"\n• "Who is the target audience and how to reach them?"\n• "What are competitors doing differently?"\n• "How to improve conversion rates?"\n• "What content strategy would work best?"\n\nWhat would you like to know?`;
+        
+        addMessage('ai', analysisMessage);
+        
+        // Store analysis data for potential conversation creation
+        setLastAnalysisData({
+          url,
+          summary: result.summary,
+          analysisMessage
+        });
         
         setStage('questions');
       } else {
@@ -138,6 +152,14 @@ export default function Playground() {
 
       addMessage('ai', responseContent, { isMultiModel: true });
       
+      // Update last analysis data with the multi-model response
+      if (lastAnalysisData) {
+        setLastAnalysisData(prev => ({
+          ...prev,
+          multiModelResponse: responseContent
+        }));
+      }
+      
     } catch (error) {
       setMessages(prev => prev.filter(msg => msg.id !== thinkingMessage.id));
       addMessage('ai', `❌ **Error generating insights**\n\nSorry, I couldn't process your question right now. Please try again or ask a different question.`);
@@ -158,6 +180,38 @@ export default function Playground() {
     setInputValue("");
     setContextId(null);
     setStage('url');
+    setLastAnalysisData(null);
+  };
+
+  const handleContinueConversation = () => {
+    // Check if user already has email stored
+    const existingEmail = getUserEmail();
+    if (existingEmail) {
+      createAndNavigateToConversation(existingEmail);
+    } else {
+      setShowEmailDialog(true);
+    }
+  };
+
+  const handleEmailSubmit = async (email) => {
+    setUserEmail(email);
+    setShowEmailDialog(false);
+    createAndNavigateToConversation(email);
+  };
+
+  const createAndNavigateToConversation = (email) => {
+    if (!lastAnalysisData) return;
+    
+    // Create conversation with analysis data
+    const conversation = createMarketingConversation(
+      lastAnalysisData.url,
+      lastAnalysisData.summary,
+      lastAnalysisData.multiModelResponse || lastAnalysisData.analysisMessage,
+      contextId // Pass the contextId for follow-up questions
+    );
+    
+    // Navigate to chat page with the conversation
+    window.location.href = `/chat?id=${conversation.id}`;
   };
 
   const copyToClipboard = async (text) => {
@@ -237,16 +291,29 @@ export default function Playground() {
                     </div>
                   )}
                   
-                  {/* Copy button for AI messages */}
-                  {message.type === 'ai' && !message.isLoading && (
-                    <button
-                      onClick={() => copyToClipboard(message.content)}
-                      className="mt-2 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                    >
-                      <Copy className="w-3 h-3" />
-                      Copy
-                    </button>
-                  )}
+                                     {/* Action buttons for AI messages */}
+                   {message.type === 'ai' && !message.isLoading && (
+                     <div className="mt-2 flex items-center gap-3">
+                       <button
+                         onClick={() => copyToClipboard(message.content)}
+                         className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                       >
+                         <Copy className="w-3 h-3" />
+                         Copy
+                       </button>
+                       
+                       {/* Show Continue Conversation button for analysis results */}
+                       {message.isMultiModel && lastAnalysisData && (
+                         <button
+                           onClick={handleContinueConversation}
+                           className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
+                         >
+                           <MessageCircle className="w-3 h-3" />
+                           Continue Conversation
+                         </button>
+                       )}
+                     </div>
+                   )}
                 </div>
                 
                 {/* Timestamp */}
@@ -306,6 +373,13 @@ export default function Playground() {
           )}
         </div>
       </div>
+      
+      {/* Email Collection Dialog */}
+      <EmailDialog
+        open={showEmailDialog}
+        onOpenChange={setShowEmailDialog}
+        onEmailSubmit={handleEmailSubmit}
+      />
     </div>
   );
 }

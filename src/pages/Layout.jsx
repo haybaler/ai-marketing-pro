@@ -14,6 +14,7 @@ export default function Layout({ children }) {
   const navigationItems = [
     { name: "Home", path: "/" },
     { name: "Playground", path: "/playground" },
+    { name: "Chat", path: "/chat" },
   ];
 
   const isActive = (path) => pathname === path;
