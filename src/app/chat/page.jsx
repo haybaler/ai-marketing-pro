@@ -67,10 +67,11 @@ export default function ChatPage() {
     const messageText = input.trim();
     setInput('');
     setIsLoading(true);
+    // Declare conversationId in the outer scope so it is available in catch block
+    let conversationId = selectedConversationId;
+    let conversation = currentConversation;
 
     try {
-      let conversationId = selectedConversationId;
-      let conversation = currentConversation;
 
       // Create new conversation if none selected
       if (!conversationId) {
