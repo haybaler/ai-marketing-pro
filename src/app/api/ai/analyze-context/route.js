@@ -160,12 +160,16 @@ export async function POST(req) {
     }
 
     // Step 2: Extract key content and metadata
+    // Handle different Firecrawl response formats
+    const data = crawlResult.data || crawlResult
+    const metadata = data.metadata || {}
+    
     const pageContent = {
-      url: crawlResult.data.metadata?.url || url,
-      title: crawlResult.data.metadata?.title || '',
-      description: crawlResult.data.metadata?.description || '',
-      content: crawlResult.data.markdown || '',
-      keywords: crawlResult.data.metadata?.keywords || []
+      url: metadata.url || data.url || url,
+      title: metadata.title || data.title || '',
+      description: metadata.description || data.description || '',
+      content: data.markdown || data.content || '',
+      keywords: metadata.keywords || data.keywords || []
     }
 
     // Step 3: Generate simple search terms (no AI parsing)

@@ -1,13 +1,3 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/ai/chat-with-context/route": "app/api/ai/chat-with-context/route.js",
-  "/api/ai/marketing-content/route": "app/api/ai/marketing-content/route.js",
-  "/api/ai/analyze-context/route": "app/api/ai/analyze-context/route.js",
-  "/api/case-studies/route": "app/api/case-studies/route.js",
-  "/api/consultation-requests/route": "app/api/consultation-requests/route.js",
-  "/case-studies/[id]/page": "app/case-studies/[id]/page.js",
-  "/case-studies/page": "app/case-studies/page.js",
-  "/page": "app/page.js",
-  "/playground/page": "app/playground/page.js",
-  "/contact/page": "app/contact/page.js"
+  "/playground/page": "app/playground/page.js"
 }
