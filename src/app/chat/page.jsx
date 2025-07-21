@@ -1,402 +1,411 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Send, Menu, X, MessageSquare, Plus, Trash2, Bot, User } from 'lucide-react';
-import { 
-  getConversations, 
-  getConversation, 
-  addMessageToConversation, 
-  deleteConversation,
-  createConversation,
-  getUserEmail 
-} from '@/lib/conversations';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiClient } from '@/api/client';
-import { format } from 'date-fns';
 
-function ChatPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedConversationId, setSelectedConversationId] = useState(null);
-  const [conversations, setConversations] = useState([]);
-  const [currentConversation, setCurrentConversation] = useState(null);
+export default function ChatPage() {
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
+  const [error, setError] = useState(null);
+  const [messageCounter, setMessageCounter] = useState(0);
+  
+  // Lead collection state
+  const [stage, setStage] = useState('welcome'); // welcome, website, email, chat
+  const [leadData, setLeadData] = useState({
+    website: '',
+    email: '',
+    conversationId: null
+  });
+  const [contextId, setContextId] = useState(null);
+  
   const messagesEndRef = useRef(null);
+  const messageCounterRef = useRef(0);
 
-  // Load initial data
-  useEffect(() => {
-    const email = getUserEmail();
-    if (!email) {
-      router.push('/');
-      return;
-    }
-    
-    setUserEmail(email);
-    loadConversations();
-    
-    // Check for conversation ID in URL
-    const conversationId = searchParams.get('id');
-    if (conversationId) {
-      setSelectedConversationId(conversationId);
-      loadConversation(conversationId);
-    }
-  }, [searchParams, router]);
+  // Generate unique message ID
+  const generateMessageId = useCallback(() => {
+    const id = `msg_${Date.now()}_${messageCounterRef.current}_${Math.random().toString(36).substr(2, 9)}`;
+    messageCounterRef.current += 1;
+    return id;
+  }, []);
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentConversation?.messages]);
-
-  const loadConversations = () => {
-    const convs = getConversations();
-    setConversations(convs);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadConversation = (id) => {
-    const conv = getConversation(id);
-    setCurrentConversation(conv);
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Initialize welcome message
+  useEffect(() => {
+    if (messages.length === 0) {
+      const welcomeId = `welcome_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const welcomeMessage = {
+        id: welcomeId,
+        type: 'assistant',
+        content: 'Welcome! I\'m your AI marketing assistant. To provide you with personalized insights, I\'ll need to collect some basic information first.\n\nLet\'s start with your website. What\'s your website URL?',
+        timestamp: new Date().toISOString()
+      };
+      setMessages([welcomeMessage]);
+    }
+  }, []);
+
+  const validateWebsite = (url) => {
+    if (!url || !url.trim()) return false;
+    
+    let normalizedUrl = url.trim();
+    if (!normalizedUrl.match(/^https?:\/\//)) {
+      normalizedUrl = 'https://' + normalizedUrl;
+    }
+    
+    try {
+      new URL(normalizedUrl);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
-    const messageText = input.trim();
-    setInput('');
+  const addMessage = useCallback((type, content) => {
+    const messageId = `${type}_${Date.now()}_${messageCounterRef.current}_${Math.random().toString(36).substr(2, 9)}`;
+    messageCounterRef.current += 1;
+    
+    const newMessage = {
+      id: messageId,
+      type,
+      content,
+      timestamp: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, newMessage]);
+    return messageId;
+  }, []);
+
+  const handleStageProgression = async (userInput) => {
+    switch (stage) {
+      case 'welcome':
+      case 'website':
+        if (!validateWebsite(userInput)) {
+          addMessage('assistant', 'Please provide a valid website URL (e.g., example.com or https://example.com)');
+          return false;
+        }
+        
+        let normalizedUrl = userInput.trim();
+        if (!normalizedUrl.match(/^https?:\/\//)) {
+          normalizedUrl = 'https://' + normalizedUrl;
+        }
+        
+        setLeadData(prev => ({ ...prev, website: normalizedUrl }));
+        setStage('email');
+        
+        addMessage('assistant', `Great! I've noted your website: ${normalizedUrl}\n\nNow, what's your email address? This will help me provide you with personalized recommendations and follow-up insights.`);
+        return false;
+      
+      case 'email':
+        if (!validateEmail(userInput)) {
+          addMessage('assistant', 'Please provide a valid email address (e.g., you@example.com)');
+          return false;
+        }
+        
+        const email = userInput.trim().toLowerCase();
+        const conversationId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        setLeadData(prev => ({ 
+          ...prev, 
+          email, 
+          conversationId 
+        }));
+        
+        // Save lead to database
+        try {
+          await apiClient.createLead(leadData.website, email, conversationId);
+          
+          // Start website analysis
+          const analysisResponse = await apiClient.analyzeContext({ 
+            url: leadData.website 
+          });
+          
+          if (analysisResponse.success) {
+            setContextId(analysisResponse.contextId);
+          }
+          
+          setStage('chat');
+          
+          addMessage('assistant', `Perfect! I've saved your information and I'm now analyzing your website: ${leadData.website}\n\nI'm your dedicated AI marketing assistant, and I'll provide personalized insights based on your website. What would you like to know about your marketing strategy?`);
+          
+        } catch (error) {
+          console.error('Failed to save lead:', error);
+          addMessage('error', 'There was an issue saving your information. Let me still help you with marketing insights. What would you like to know?');
+          setStage('chat');
+        }
+        return false;
+      
+      default:
+        return true; // Proceed with normal chat
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isLoading) return;
+
+    const userMessage = inputValue.trim();
+    setInputValue('');
+    setError(null);
+    
+    // Add user message to chat
+    addMessage('user', userMessage);
+
     setIsLoading(true);
-    let conversationId = selectedConversationId;
-    let conversation = currentConversation;
 
     try {
-      // Create new conversation if none selected
-      if (!conversationId) {
-        const newConv = createConversation('New Chat');
-        conversationId = newConv.id;
-        setSelectedConversationId(conversationId);
-        conversation = newConv;
-        setCurrentConversation(conversation);
-        loadConversations();
+      // Handle stage progression (lead collection)
+      if (stage !== 'chat') {
+        const shouldProceedToChat = await handleStageProgression(userMessage);
+        if (!shouldProceedToChat) {
+          setIsLoading(false);
+          return;
+        }
       }
-
-      // Add user message
-      const userMessage = {
-        type: 'user',
-        content: messageText,
-        timestamp: new Date().toISOString()
-      };
       
-      const updatedConv = addMessageToConversation(conversationId, userMessage);
-      setCurrentConversation(updatedConv);
-      loadConversations();
-
-      // Get AI response
-      const aiResponse = await apiClient.chatWithContext({
-        message: messageText,
-        context: conversation?.contextId ? { id: conversation.contextId } : null,
-        userId: userEmail
-      });
-
-      // Add AI response to conversation
-      const aiMessage = {
-        type: 'ai',
-        content: aiResponse.message || "I'm here to help with your marketing needs. How can I assist you today?",
-        timestamp: new Date().toISOString()
-      };
+      // Normal chat flow
+      let response;
       
-      const finalConv = addMessageToConversation(conversationId, aiMessage);
-      setCurrentConversation(finalConv);
-      loadConversations();
+      if (contextId) {
+        response = await apiClient.chatWithContext({
+          contextId,
+          question: userMessage
+        });
+      } else {
+        // Fallback to general marketing content generation
+        response = await apiClient.generateMarketingContent({
+          url: leadData.website || '',
+          prompt: userMessage
+        });
+      }
+      
+      // Add assistant response
+      addMessage('assistant', response.response || response.content || 'I apologize, but I couldn\'t generate a response. Please try again.');
       
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Chat error:', error);
+      setError(error.message);
       
-      // Add error message to conversation
-      const errorMessage = {
-        type: 'ai',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
-        isError: true,
-        timestamp: new Date().toISOString()
-      };
-      
-      const errorConv = addMessageToConversation(conversationId, errorMessage);
-      setCurrentConversation(errorConv);
-      loadConversations();
-      
+      addMessage('error', `Sorry, I encountered an error: ${error.message}. Please try again.`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleNewChat = () => {
-    setSelectedConversationId(null);
-    setCurrentConversation(null);
-    router.push('/chat');
+  const formatTimestamp = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  const handleDeleteConversation = (id, e) => {
-    e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete this conversation?')) {
-      deleteConversation(id);
+  const renderMessage = (message) => {
+    const baseClasses = "max-w-3xl mx-auto px-4 py-3 rounded-lg";
+    
+    switch (message.type) {
+      case 'user':
+        return (
+          <div key={message.id} className="flex justify-end mb-4">
+            <div className={`${baseClasses} bg-blue-600 text-white`}>
+              <p className="whitespace-pre-wrap">{message.content}</p>
+              <span className="text-xs text-blue-200 mt-1 block">
+                {formatTimestamp(message.timestamp)}
+              </span>
+            </div>
+          </div>
+        );
       
-      if (selectedConversationId === id) {
-        setSelectedConversationId(null);
-        setCurrentConversation(null);
-      }
+      case 'assistant':
+        return (
+          <div key={message.id} className="flex justify-start mb-4">
+            <div className={`${baseClasses} bg-gray-100 text-gray-900 border`}>
+              <p className="whitespace-pre-wrap">{message.content}</p>
+              <span className="text-xs text-gray-500 mt-1 block">
+                {formatTimestamp(message.timestamp)}
+              </span>
+            </div>
+          </div>
+        );
       
-      loadConversations();
+      case 'system':
+        return (
+          <div key={message.id} className="flex justify-center mb-4">
+            <div className={`${baseClasses} bg-yellow-50 text-yellow-800 border border-yellow-200`}>
+              <p className="text-sm text-center">{message.content}</p>
+            </div>
+          </div>
+        );
+      
+      case 'error':
+        return (
+          <div key={message.id} className="flex justify-start mb-4">
+            <div className={`${baseClasses} bg-red-50 text-red-800 border border-red-200`}>
+              <p className="whitespace-pre-wrap">{message.content}</p>
+              <span className="text-xs text-red-600 mt-1 block">
+                {formatTimestamp(message.timestamp)}
+              </span>
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  const getStageIndicator = useCallback(() => {
+    const stages = [
+      { key: 'welcome', label: 'Welcome', completed: stage !== 'welcome' },
+      { key: 'website', label: 'Website', completed: leadData.website && stage !== 'website' },
+      { key: 'email', label: 'Email', completed: leadData.email && stage !== 'email' },
+      { key: 'chat', label: 'Chat', completed: stage === 'chat' }
+    ];
+    
+    return (
+      <div className="flex items-center space-x-2 text-sm">
+        {stages.map((stageItem, index) => (
+          <div key={`stage-${stageItem.key}-${index}`} className="flex items-center">
+            <div className={`w-3 h-3 rounded-full ${
+              stageItem.completed 
+                ? 'bg-green-500' 
+                : stage === stageItem.key 
+                ? 'bg-blue-500' 
+                : 'bg-gray-300'
+            }`} />
+            <span className={`ml-1 ${
+              stageItem.completed 
+                ? 'text-green-700' 
+                : stage === stageItem.key 
+                ? 'text-blue-700' 
+                : 'text-gray-500'
+            }`}>
+              {stageItem.label}
+            </span>
+            {index < stages.length - 1 && (
+              <div key={`separator-${index}`} className="w-4 h-px bg-gray-300 mx-2" />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }, [stage, leadData.website, leadData.email]);
+
+  const getPlaceholderText = () => {
+    switch (stage) {
+      case 'welcome':
+      case 'website':
+        return 'Enter your website URL (e.g., example.com)';
+      case 'email':
+        return 'Enter your email address';
+      case 'chat':
+        return 'Ask about marketing strategies, competitor analysis, SEO tips...';
+      default:
+        return 'Type your message...';
     }
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div 
-        className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 overflow-hidden`}
-      >
-        <div className="p-4 border-b border-gray-200">
-          <Button 
-            onClick={handleNewChat}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Chat
-          </Button>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto py-2">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              onClick={() => {
-                setSelectedConversationId(conv.id);
-                loadConversation(conv.id);
-                if (window.innerWidth < 768) {
-                  setSidebarOpen(false);
-                }
-              }}
-              className={`px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-gray-100 ${
-                selectedConversationId === conv.id ? 'bg-blue-50 border-r-4 border-blue-500' : ''
-              }`}
-            >
-              <div className="truncate pr-2">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {conv.title}
-                </p>
-                <p className="text-xs text-gray-500 truncate">
-                  {format(new Date(conv.updatedAt), 'MMM d, yyyy h:mm a')}
-                </p>
-              </div>
-              <button
-                onClick={(e) => handleDeleteConversation(conv.id, e)}
-                className="text-gray-400 hover:text-red-500 p-1"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-          
-          {conversations.length === 0 && (
-            <div className="px-4 py-8 text-center">
-              <MessageSquare className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No conversations yet</p>
-              <p className="text-xs text-gray-400 mt-1">Start a new chat to begin</p>
-            </div>
-          )}
-        </div>
-        
-        <div className="p-4 border-t border-gray-200">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-4">
+        <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium">
-                {userEmail?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="ml-2">
-                <p className="text-sm font-medium text-gray-900">
-                  {userEmail || 'User'}
-                </p>
-                <p className="text-xs text-gray-500">Free Plan</p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">AI Marketing Pro</h1>
+              <p className="text-gray-600 mt-1">
+                Get personalized marketing insights and strategies
+              </p>
+            </div>
+            <div className="text-right">
+              {getStageIndicator()}
             </div>
           </div>
+          
+          {/* Lead data badges */}
+          {(leadData.website || leadData.email) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {leadData.website && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Website: {new URL(leadData.website).hostname}
+                </span>
+              )}
+              {leadData.email && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Email: {leadData.email}
+                </span>
+              )}
+              {contextId && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  Analysis Active
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
-          <div className="flex items-center">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="md:hidden mr-4 text-gray-500 hover:text-gray-700"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            
-            {currentConversation && (
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-white" />
-                </div>
-                <h1 className="font-semibold ml-2">
-                  {currentConversation?.title || 'AI Marketing Chat'}
-                </h1>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {currentConversation?.messages && currentConversation.messages.length > 0 ? (
-            <div className="space-y-4 max-w-4xl mx-auto">
-              {currentConversation.messages.map((message) => (
-                <div
-                  key={message.id || message.timestamp}
-                  className={`flex gap-4 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {message.type === 'ai' && (
-                    <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-5 h-5 text-white" />
-                    </div>
-                  )}
-                  
-                  <div className={`max-w-3xl ${message.type === 'user' ? 'order-first' : ''}`}>
-                    <div className={`rounded-2xl px-4 py-3 ${
-                      message.type === 'user' 
-                        ? 'bg-blue-600 text-white ml-auto' 
-                        : message.isError 
-                          ? 'bg-red-50 border border-red-200'
-                          : 'bg-white border shadow-sm'
-                    }`}>
-                      <div className="whitespace-pre-wrap leading-relaxed">
-                        {message.content.split('\n').map((line, index) => {
-                          // Handle markdown-style formatting
-                          if (line.startsWith('##')) {
-                            return <h2 key={index} className="text-lg font-semibold mt-4 mb-2 text-gray-900">{line.replace('##', '').trim()}</h2>;
-                          }
-                          if (line.startsWith('###')) {
-                            return <h3 key={index} className="text-base font-semibold mt-3 mb-2 text-gray-800">{line.replace('###', '').trim()}</h3>;
-                          }
-                          if (line.startsWith('**') && line.endsWith('**')) {
-                            return <p key={index} className="font-semibold text-gray-900">{line.replace(/\*\*/g, '')}</p>;
-                          }
-                          if (line.startsWith('•')) {
-                            return <p key={index} className="ml-4 text-gray-700">{line}</p>;
-                          }
-                          if (line === '---') {
-                            return <hr key={index} className="my-4 border-gray-200" />;
-                          }
-                          return line ? (
-                            <p 
-                              key={index} 
-                              className={message.type === 'user' 
-                                ? 'text-white' 
-                                : message.isError 
-                                  ? 'text-red-700'
-                                  : 'text-gray-700'
-                              }
-                            >
-                              {line}
-                            </p>
-                          ) : <br key={index} />;
-                        })}
-                      </div>
-                    </div>
-                    
-                    <div className={`text-xs text-gray-500 mt-1 ${message.type === 'user' ? 'text-right' : 'text-left'}`}>
-                      {format(new Date(message.timestamp), 'h:mm a')}
-                    </div>
-                  </div>
-
-                  {message.type === 'user' && (
-                    <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
-                      <User className="w-5 h-5 text-white" />
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="ml-4">
-                    <div className="bg-white border shadow-sm rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                        <span className="text-gray-600">Thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <div ref={messagesEndRef} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center max-w-md">
-                <MessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold mb-2">Start a New Conversation</h2>
-                <p className="text-gray-600 mb-4">
-                  Ask me anything about marketing, growth strategies, or business development.
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-blue-800">
-                    💡 <strong>Tip:</strong> Try asking about marketing strategies or growth opportunities.
-                  </p>
+      {/* Chat Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-4xl mx-auto">
+          {messages.map(renderMessage)}
+          
+          {isLoading && (
+            <div className="flex justify-start mb-4">
+              <div className="max-w-3xl mx-auto px-4 py-3 rounded-lg bg-gray-100 border">
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-gray-600">Processing...</span>
                 </div>
               </div>
             </div>
           )}
+          
+          <div ref={messagesEndRef} />
         </div>
+      </div>
 
-        {/* Input Area */}
-        <div className="border-t bg-white px-4 py-4 flex-shrink-0">
-          <div className="max-w-4xl mx-auto">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              className="flex gap-3"
-            >
+      {/* Input Form */}
+      <div className="bg-white border-t border-gray-200 px-4 py-4">
+        <div className="max-w-4xl mx-auto">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmit} className="flex space-x-4">
+            <div className="flex-1">
               <input
                 type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about marketing strategy, competitors, growth opportunities..."
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder={getPlaceholderText()}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={isLoading}
-                className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
               />
-              <Button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="px-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              >
-                {isLoading ? (
-                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </Button>
-            </form>
-          </div>
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading || !inputValue.trim()}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isLoading ? 'Sending...' : 'Send'}
+            </button>
+          </form>
         </div>
       </div>
     </div>
-  );
-}
-
-export default function ChatPage() {
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading chat...</div>}>
-      <ChatPageContent />
-    </Suspense>
   );
 }

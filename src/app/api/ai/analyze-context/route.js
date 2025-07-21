@@ -1,23 +1,53 @@
-import { createClient } from '@supabase/supabase-js'
-import FirecrawlApp from '@mendable/firecrawl-js'
-import OpenAI from 'openai'
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
 
 // Initialize services
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const firecrawl = process.env.FIRECRAWL_API_KEY ? new FirecrawlApp({
-  apiKey: process.env.FIRECRAWL_API_KEY
-}) : null
-
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-}) : null
+});
 
-// Serper API integration (manual implementation)
-async function searchWithSerper(query) {
+/**
+ * Scrapes website using our internal API
+ */
+async function scrapeWebsite(url) {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/scrape-website`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scraping failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Website scraping failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * SERP API integration for competitor insights
+ */
+async function searchWithSerper(query, num = 5) {
+  if (!process.env.SERPER_API_KEY) {
+    console.warn('SERPER_API_KEY not configured, skipping SERP analysis');
+    return null;
+  }
+
   try {
     const response = await fetch('https://google.serper.dev/search', {
       method: 'POST',
@@ -27,52 +57,147 @@ async function searchWithSerper(query) {
       },
       body: JSON.stringify({
         q: query,
-        num: 5
+        num: num,
+        gl: 'us',
+        hl: 'en'
       })
-    })
+    });
     
     if (!response.ok) {
-      throw new Error('Serper API request failed')
+      throw new Error(`Serper API error: ${response.status}`);
     }
     
-    return await response.json()
+    const data = await response.json();
+    return {
+      success: true,
+      data: data
+    };
   } catch (error) {
-    console.error('Serper search failed:', error)
-    return null
+    console.error('Serper search failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 
-export async function POST(req) {
+/**
+ * Generate search terms for competitor analysis
+ */
+async function generateSearchTerms(websiteContent, domain) {
   try {
-    const { url, userId } = await req.json()
+    const prompt = `Based on this website content from ${domain}, generate 3-5 relevant search terms that would help find competitors and market insights. Focus on the main business/industry keywords.
 
-    if (!url) {
-      return new Response(JSON.stringify({ error: 'URL is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
+Website content: ${websiteContent.substring(0, 2000)}...
+
+Return only a JSON array of search terms, like: ["term1", "term2", "term3"]`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 200,
+      temperature: 0.3
+    });
+
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) return [];
+
+    try {
+      return JSON.parse(content);
+    } catch {
+      // Fallback: extract terms from content
+      return [
+        `${domain} competitors`,
+        `${domain} industry`,
+        `${domain} alternatives`
+      ];
+    }
+  } catch (error) {
+    console.error('Failed to generate search terms:', error);
+    return [`${domain} competitors`];
+  }
+}
+
+/**
+ * Generate comprehensive analysis
+ */
+async function generateAnalysis(websiteData, serpResults) {
+  try {
+    const { title, description, content, domain } = websiteData;
+    
+    let competitorInfo = '';
+    if (serpResults && serpResults.length > 0) {
+      competitorInfo = serpResults.map(result => 
+        `Search: "${result.query}"\nTop Results: ${result.data?.organic?.slice(0, 3).map(r => `${r.title} (${r.link})`).join(', ') || 'No results'}`
+      ).join('\n\n');
     }
 
-    // Check for required services
-    if (!firecrawl || !openai || !process.env.SERPER_API_KEY || !supabase) {
-      console.error('Missing required services - check environment variables')
-      return new Response(JSON.stringify({ 
-        error: 'Service configuration error',
-        details: 'One or more required services are not configured. Please check the server logs.'
-      }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    const prompt = `As a marketing expert, analyze this website and provide comprehensive marketing insights:
+
+WEBSITE ANALYSIS:
+Domain: ${domain}
+Title: ${title}
+Description: ${description}
+Content: ${content.substring(0, 3000)}...
+
+COMPETITOR RESEARCH:
+${competitorInfo || 'No competitor data available'}
+
+Please provide a detailed analysis including:
+1. Business Overview & Value Proposition
+2. Target Audience Analysis
+3. Competitive Landscape
+4. Marketing Strengths & Opportunities
+5. Recommended Marketing Strategies
+6. SEO & Content Recommendations
+
+Format your response as structured insights that would be valuable for marketing strategy discussions.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 2000,
+      temperature: 0.7
+    });
+
+    return response.choices[0]?.message?.content || 'Analysis could not be generated.';
+  } catch (error) {
+    console.error('Failed to generate analysis:', error);
+    return 'Failed to generate comprehensive analysis. Please try again.';
+  }
+}
+
+export async function POST(request) {
+  try {
+    const { url, userId } = await request.json();
+
+    if (!url) {
+      return NextResponse.json(
+        { error: 'URL is required' },
+        { status: 400 }
+      );
     }
 
     // Validate URL format
     try {
-      new URL(url)
+      new URL(url);
     } catch {
-      return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return NextResponse.json(
+        { error: 'Invalid URL format' },
+        { status: 400 }
+      );
+    }
+
+    // Check for required services
+    if (!openai || !supabase) {
+      console.error('Missing required services - check environment variables');
+      return NextResponse.json(
+        { 
+          error: 'Service configuration error',
+          details: 'Required services not configured'
+        },
+        { status: 503 }
+      );
     }
 
     // Check if context already exists and is recent (within 24 hours)
@@ -82,10 +207,10 @@ export async function POST(req) {
       .eq('url', url)
       .eq('status', 'completed')
       .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .single()
+      .single();
 
     if (existingContext) {
-      return new Response(JSON.stringify({ 
+      return NextResponse.json({
         success: true,
         contextId: existingContext.id,
         cached: true,
@@ -94,244 +219,129 @@ export async function POST(req) {
           searchTerms: existingContext.search_terms?.length || 0,
           competitorData: existingContext.search_results?.length || 0
         }
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+      });
     }
 
     // Create initial context record
-    const { data: initialContext, error: insertError } = await supabase
+    const { data: contextRecord, error: contextError } = await supabase
       .from('website_contexts')
       .insert([{
-        url,
+        url: url,
         user_id: userId,
-        status: 'analyzing'
+        status: 'processing',
+        created_at: new Date().toISOString()
       }])
       .select()
-      .single()
+      .single();
 
-    if (insertError) {
-      console.error('Database insert error:', insertError)
-      throw new Error('Failed to create context record')
+    if (contextError) {
+      console.error('Failed to create context record:', contextError);
+      return NextResponse.json(
+        { error: 'Failed to initialize analysis' },
+        { status: 500 }
+      );
     }
 
-    // Step 1: Crawl the website with Firecrawl
-    let crawlResult
-    try {
-      crawlResult = await firecrawl.scrapeUrl(url, {
-        formats: ['markdown'],
-        onlyMainContent: true
-      })
-    } catch (error) {
-      console.error('Firecrawl error:', error)
-      await supabase
-        .from('website_contexts')
-        .update({ status: 'failed', analysis_summary: { error: 'Failed to crawl website' } })
-        .eq('id', initialContext.id)
-      
-      // More user-friendly error message in production
-      const errorMessage = process.env.NODE_ENV === 'production' 
-        ? 'Unable to analyze this website. Please try a different URL or try again later.'
-        : error.message
-      
-      return new Response(JSON.stringify({ 
-        error: 'Failed to crawl website',
-        details: errorMessage 
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    // Start async processing
+    processWebsiteAnalysis(contextRecord.id, url);
+
+    return NextResponse.json({
+      success: true,
+      contextId: contextRecord.id,
+      status: 'processing',
+      message: 'Analysis started. This may take a few moments.'
+    });
+
+  } catch (error) {
+    console.error('Analyze context API error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Async processing function
+ */
+async function processWebsiteAnalysis(contextId, url) {
+  try {
+    console.log(`Starting analysis for context ${contextId}: ${url}`);
+
+    // Step 1: Scrape website
+    const scrapingResult = await scrapeWebsite(url);
+    if (!scrapingResult.success) {
+      throw new Error(`Website scraping failed: ${scrapingResult.error}`);
     }
 
-    if (!crawlResult.success) {
-      await supabase
-        .from('website_contexts')
-        .update({ status: 'failed', analysis_summary: { error: 'Website crawl unsuccessful' } })
-        .eq('id', initialContext.id)
+    const websiteData = scrapingResult.data;
+    console.log(`Scraped website: ${websiteData.title}`);
 
-      return new Response(JSON.stringify({ 
-        error: 'Website crawl unsuccessful',
-        details: crawlResult.error || 'Unknown crawl error'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
+    // Step 2: Generate search terms
+    const searchTerms = await generateSearchTerms(websiteData.content, websiteData.domain);
+    console.log(`Generated search terms:`, searchTerms);
 
-    // Step 2: Extract key content and metadata
-    // Handle different Firecrawl response formats
-    const data = crawlResult.data || crawlResult
-    const metadata = data.metadata || {}
-    
-    const pageContent = {
-      url: metadata.url || data.url || url,
-      title: metadata.title || data.title || '',
-      description: metadata.description || data.description || '',
-      content: data.markdown || data.content || '',
-      keywords: metadata.keywords || data.keywords || []
-    }
-
-    // Step 3: Generate simple search terms (no AI parsing)
-    const searchTerms = generateSimpleSearchTerms(pageContent)
-
-    // Step 4: Use Serper to get competitive data (only if we have search terms)
-    const searchResults = []
-    if (searchTerms.length > 0) {
-      // Only search for top 3 terms to avoid API limits
-      const topSearchTerms = searchTerms.slice(0, 3)
-      for (const term of topSearchTerms) {
-        const result = await searchWithSerper(term)
-        if (result) {
-          searchResults.push({
-            query: term,
-            ...result
-          })
-        }
+    // Step 3: Perform SERP searches
+    const serpResults = [];
+    for (const term of searchTerms.slice(0, 3)) { // Limit to 3 searches
+      const result = await searchWithSerper(term);
+      if (result?.success) {
+        serpResults.push({
+          query: term,
+          data: result.data
+        });
       }
+      // Small delay to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    // Step 5: Generate simple analysis summary (no JSON parsing)
-    const analysisSummary = await generateSimpleAnalysisSummary(pageContent, searchResults)
+    console.log(`Completed ${serpResults.length} SERP searches`);
 
-    // Step 6: Store completed context in database
-    const { data: completedContext, error: updateError } = await supabase
+    // Step 4: Generate comprehensive analysis
+    const analysis = await generateAnalysis(websiteData, serpResults);
+    console.log(`Generated analysis (${analysis.length} characters)`);
+
+    // Step 5: Update context record with results
+    const { error: updateError } = await supabase
       .from('website_contexts')
       .update({
-        page_content: [pageContent],
+        title: websiteData.title,
+        description: websiteData.description,
+        content: websiteData.content,
+        domain: websiteData.domain,
         search_terms: searchTerms,
-        search_results: searchResults,
-        analysis_summary: analysisSummary,
-        analyzed_at: new Date().toISOString(),
-        status: 'completed'
+        search_results: serpResults,
+        analysis: analysis,
+        status: 'completed',
+        updated_at: new Date().toISOString()
       })
-      .eq('id', initialContext.id)
-      .select()
-      .single()
+      .eq('id', contextId);
 
     if (updateError) {
-      console.error('Database update error:', updateError)
-      throw new Error('Failed to update context')
+      console.error('Failed to update context:', updateError);
+      throw updateError;
     }
 
-    return new Response(JSON.stringify({ 
-      success: true,
-      contextId: completedContext.id,
-      cached: false,
-      summary: {
-        pagesAnalyzed: 1,
-        searchTerms: searchTerms.length,
-        competitorData: searchResults.length
-      }
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    console.log(`Analysis completed for context ${contextId}`);
 
   } catch (error) {
-    console.error('Context analysis error:', error)
-    return new Response(JSON.stringify({ 
-      error: 'Failed to analyze context',
-      details: error.message 
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    console.error(`Analysis failed for context ${contextId}:`, error);
+    
+    // Update context with error status
+    await supabase
+      .from('website_contexts')
+      .update({
+        status: 'failed',
+        error_message: error.message,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', contextId);
   }
 }
 
-function generateSimpleSearchTerms(pageContent) {
-  const searchTerms = []
-  
-  // Add title words
-  if (pageContent.title) {
-    const titleWords = pageContent.title.toLowerCase().split(/\s+/)
-    titleWords.forEach(word => {
-      if (word.length > 3 && !searchTerms.includes(word)) {
-        searchTerms.push(word)
-      }
-    })
-  }
-  
-  // Add description words
-  if (pageContent.description) {
-    const descWords = pageContent.description.toLowerCase().split(/\s+/)
-    descWords.forEach(word => {
-      if (word.length > 3 && !searchTerms.includes(word)) {
-        searchTerms.push(word)
-      }
-    })
-  }
-  
-  // Add keywords if available
-  if (pageContent.keywords && pageContent.keywords.length > 0) {
-    pageContent.keywords.forEach(keyword => {
-      if (!searchTerms.includes(keyword.toLowerCase())) {
-        searchTerms.push(keyword.toLowerCase())
-      }
-    })
-  }
-  
-  // Extract from content if we don't have enough terms
-  if (searchTerms.length < 5 && pageContent.content) {
-    const words = pageContent.content.toLowerCase().match(/\b\w+\b/g) || []
-    const wordCount = {}
-    words.forEach(word => {
-      if (word.length > 4) {
-        wordCount[word] = (wordCount[word] || 0) + 1
-      }
-    })
-    
-    const topWords = Object.entries(wordCount)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10)
-      .map(([word]) => word)
-    
-    topWords.forEach(word => {
-      if (!searchTerms.includes(word) && searchTerms.length < 8) {
-        searchTerms.push(word)
-      }
-    })
-  }
-  
-  return searchTerms.slice(0, 6) // Limit to 6 terms
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Method not allowed. Use POST.' },
+    { status: 405 }
+  );
 }
-
-async function generateSimpleAnalysisSummary(pageContent, searchResults) {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a marketing analyst. Analyze the website content and provide a brief business overview. Keep it simple and actionable.`
-        },
-        {
-          role: 'user',
-          content: `Website: ${pageContent.title}\nDescription: ${pageContent.description}\nContent: ${pageContent.content.slice(0, 1000)}\n\nProvide a brief business overview in 2-3 sentences.`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 200
-    })
-
-    const businessOverview = response.choices[0].message.content.trim()
-    
-    return {
-      business_overview: businessOverview,
-      key_strengths: ["Website analysis completed"],
-      market_opportunities: ["Competitive research available"],
-      competitive_landscape: `Found ${searchResults.length} search results for competitive analysis`,
-      recommended_focus_areas: ["Content optimization", "SEO improvement"]
-    }
-  } catch (error) {
-    console.error('Analysis summary generation failed:', error)
-    return {
-      business_overview: `Website analysis for ${pageContent.title || 'the provided URL'}`,
-      key_strengths: ["Website crawled successfully"],
-      market_opportunities: ["Market research completed"],
-      competitive_landscape: `Analyzed ${searchResults.length} competitive data points`,
-      recommended_focus_areas: ["Marketing strategy", "Content improvement"]
-    }
-  }
-} 

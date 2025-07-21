@@ -151,5 +151,85 @@ export const apiClient = {
     }
 
     return response.json()
+  },
+
+  // Lead Collection API
+  async createLead(website, email, conversationId = null) {
+    const response = await fetch(`${API_BASE}/leads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'create',
+        website,
+        email,
+        conversationId
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create lead');
+    }
+
+    return response.json();
+  },
+
+  async getLeads(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        params.append(key, value);
+      }
+    });
+
+    const response = await fetch(`${API_BASE}/leads?${params}`);
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch leads');
+    }
+
+    return response.json();
+  },
+
+  async updateLeadStatus(leadId, status) {
+    const response = await fetch(`${API_BASE}/leads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'update_status',
+        leadId,
+        status
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update lead status');
+    }
+
+    return response.json();
+  },
+
+  // Website Scraping API
+  async scrapeWebsite(url) {
+    const response = await fetch(`${API_BASE}/scrape-website`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to scrape website');
+    }
+
+    return response.json();
   }
 } 
